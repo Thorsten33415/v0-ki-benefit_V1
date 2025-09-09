@@ -7,6 +7,8 @@ const reloadBtn = document.getElementById("reloadBtn")
 const filterCategoryEl = document.getElementById("filterCategory")
 const filterSectorEl = document.getElementById("filterSector")
 
+let activeCategory = ""
+
 // Declare variables before using them
 const latestApplications = [] // Placeholder for latest applications data
 const aiApplications = [] // Placeholder for AI applications data
@@ -79,10 +81,19 @@ async function loadDynamicContent() {
 }
 
 function applyFilters(list) {
+  let filtered = list
+
+  // Kategorie aus Route anwenden
+  if (activeCategory) {
+    const cat = activeCategory.toLowerCase()
+    filtered = filtered.filter((item) => String(item.category || "").toLowerCase() === cat)
+  }
+
+  // Optionale bestehende UI-Filter
   const cat = (filterCategoryEl.value || "").trim().toLowerCase()
   const sec = (filterSectorEl.value || "").trim()
 
-  return list.filter((item) => {
+  return filtered.filter((item) => {
     const okCat = cat ? item.category.toLowerCase().includes(cat) : true
     const okSec = sec ? item.sector === sec : true
     return okCat && okSec
@@ -159,4 +170,19 @@ filterSectorEl.addEventListener("change", render)
 // Initial Load
 document.addEventListener("DOMContentLoaded", () => {
   loadDynamicContent()
+
+  // Routing -> aktive Kategorie setzen und rendern
+  if (window.AppRouter && typeof window.AppRouter.add === "function") {
+    window.AppRouter.add("/", () => {
+      activeCategory = ""
+      render()
+    })
+    window.AppRouter.add("/category/:slug", ({ slug }) => {
+      activeCategory = slug || ""
+      render()
+    })
+    if (typeof window.AppRouter.start === "function") {
+      window.AppRouter.start()
+    }
+  }
 })

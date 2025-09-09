@@ -11,6 +11,18 @@ let activeCategory = ""
 let dataReady = false
 let isFetching = false
 
+const NO_CACHE = { headers: { Accept: "application/json", "Cache-Control": "no-cache" }, cache: "no-store" }
+
+function sortByPublishedDesc(list) {
+  return list.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+}
+
+function isFresh(iso, days = 7) {
+  const d = new Date(iso || 0).getTime()
+  if (!d) return false
+  return Date.now() - d <= days * 24 * 60 * 60 * 1000
+}
+
 // Declare variables before using them
 const latestApplications = [] // Placeholder for latest applications data
 const aiApplications = [] // Placeholder for AI applications data
@@ -94,11 +106,11 @@ async function fetchFromGNews(q) {
     token: GNEWS_API_KEY,
   })
   const url = `https://gnews.io/api/v4/search?${params.toString()}`
-  const res = await fetch(url, { headers: { Accept: "application/json" } })
+  const res = await fetch(url, NO_CACHE)
   if (!res.ok) throw new Error("gnews " + res.status)
   const data = await res.json()
   const items = Array.isArray(data?.articles) ? data.articles : []
-  return items.map((it) => ({
+  const mapped = items.map((it) => ({
     title: it.title || "",
     category: q || "gnews",
     sector: it.source?.name || "GNews",
@@ -108,6 +120,7 @@ async function fetchFromGNews(q) {
     isNew: true,
     publishedAt: it.publishedAt,
   }))
+  return sortByPublishedDesc(mapped)
 }
 
 async function fetchFromNewsAPI(q) {
@@ -120,11 +133,11 @@ async function fetchFromNewsAPI(q) {
     apiKey: NEWSAPI_KEY,
   })
   const url = `https://newsapi.org/v2/everything?${params.toString()}`
-  const res = await fetch(url, { headers: { Accept: "application/json" } })
+  const res = await fetch(url, NO_CACHE)
   if (!res.ok) throw new Error("newsapi " + res.status)
   const data = await res.json()
   const items = Array.isArray(data?.articles) ? data.articles : []
-  return items.map((it) => ({
+  const mapped = items.map((it) => ({
     title: it.title || "",
     category: q || "newsapi",
     sector: it.source?.name || "NewsAPI",
@@ -134,18 +147,19 @@ async function fetchFromNewsAPI(q) {
     isNew: true,
     publishedAt: it.publishedAt,
   }))
+  return sortByPublishedDesc(mapped)
 }
 
-async function fetchFromSpaceflight(categorySlug) {
-  const search = categorySlug ? `&search=${encodeURIComponent(categorySlug)}` : ""
+async function fetchFromSpaceflight(q) {
+  const search = q ? `&search=${encodeURIComponent(q)}` : ""
   const url = `https://api.spaceflightnewsapi.net/v4/articles/?limit=30&ordering=-published_at${search}`
-  const res = await fetch(url, { headers: { Accept: "application/json" } })
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
+  const res = await fetch(url, NO_CACHE)
+  if (!res.ok) throw new Error("spaceflight " + res.status)
   const data = await res.json()
   const items = Array.isArray(data?.results) ? data.results : []
-  return items.map((it) => ({
+  const mapped = items.map((it) => ({
     title: it.title || "",
-    category: categorySlug || "spaceflight",
+    category: q || "live",
     sector: it.news_site || "",
     description: it.summary || "",
     link: it.url || "#",
@@ -153,16 +167,46 @@ async function fetchFromSpaceflight(categorySlug) {
     isNew: true,
     publishedAt: it.published_at,
   }))
+  return sortByPublishedDesc(mapped)
 }
 
-async function fetchFromHackerNews(categorySlug) {
-  // Placeholder implementation
-  return []
+async function fetchFromHackerNews(q) {
+  const url = `https://hn.algolia.com/api/v1/search_by_date?hitsPerPage=30&tags=story${q ? `&query=${encodeURIComponent(q)}` : ""}`
+  const res = await fetch(url, NO_CACHE)
+  if (!res.ok) throw new Error("hn " + res.status)
+  const data = await res.json()
+  const items = Array.isArray(data?.hits) ? data.hits : []
+  const mapped = items.map((it) => ({
+    title: it.title || it.story_title || "",
+    category: q || "hackernews",
+    sector: it.author || "HN",
+    description: it.story_text || "",
+    link: it.url || it.story_url || "#",
+    iconName: "news",
+    isNew: true,
+    publishedAt: it.created_at,
+  }))
+  return sortByPublishedDesc(mapped)
 }
 
-async function fetchFromReddit(categorySlug) {
-  // Placeholder implementation
-  return []
+async function fetchFromReddit(q) {
+  const sub = q && /^[a-z0-9_]+$/i.test(q) ? q : "news"
+  const url = `https://www.reddit.com/r/${sub}/new.json?limit=30`
+  const res = await fetch(url, { ...NO_CACHE, headers: { Accept: "application/json", "User-Agent": "app/1.0" } })
+  if (!res.ok) throw new Error("reddit " + res.status)
+  const data = await res.json()
+  const items = Array.isArray(data?.data?.children) ? data.data.children : []
+  const mapped = items.map(({ data: d }) => ({
+    title: d.title || "",
+    category: sub,
+    sector: d.subreddit || "Reddit",
+    description: d.selftext || "",
+    link: d.url || "#",
+    iconName: "news",
+    isNew: true,
+    publishedAt: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null,
+  }))
+  return sortByPublishedDesc(mapped)
 }
 
 function render() {
@@ -172,20 +216,18 @@ function render() {
 
   ul.innerHTML = ""
 
-  if (!dataReady) {
-    if (empty) empty.classList.add("hidden")
-    return
-  }
+  let list = dataReady && Array.isArray(allApplications) ? allApplications.slice() : []
 
-  let list = Array.isArray(allApplications) ? allApplications.slice() : []
-
-  // 1.) Route-Kategorie strikt anwenden
   if (activeCategory) {
     const cat = activeCategory.toLowerCase()
-    list = list.filter((it) => String(it.category || "").toLowerCase() === cat)
+    list = list.filter((it) =>
+      String(it.category || "")
+        .toLowerCase()
+        .includes(cat),
+    )
   }
 
-  // 2.) UI-Filter NACH der Route anwenden (nicht überschreiben)
+  // UI-Filter NACH der Route anwenden
   const catText = (filterCategoryEl?.value || "").trim().toLowerCase()
   if (catText) {
     list = list.filter((it) =>
@@ -240,26 +282,40 @@ async function fetchLiveAggregated(categorySlug) {
   if (isFetching) return
   isFetching = true
   setLoading(true)
+
+  console.log("Now:", new Date().toISOString())
+
   try {
     let results = []
     for (const src of LIVE_SOURCES) {
       try {
-        if (src === "gnews") results = await fetchFromGNews(categorySlug)
-        else if (src === "newsapi") results = await fetchFromNewsAPI(categorySlug)
-        else if (src === "spaceflight") results = await fetchFromSpaceflight(categorySlug)
-        else if (src === "hackernews") results = await fetchFromHackerNews(categorySlug)
-        else if (src === "reddit") results = await fetchFromReddit(categorySlug)
-        if (results.length) break
+        let r = []
+        if (src === "gnews") r = await fetchFromGNews(categorySlug)
+        else if (src === "newsapi") r = await fetchFromNewsAPI(categorySlug)
+        else if (src === "spaceflight") r = await fetchFromSpaceflight(categorySlug)
+        else if (src === "hackernews") r = await fetchFromHackerNews(categorySlug)
+        else if (src === "reddit") r = await fetchFromReddit(categorySlug)
+
+        r = r.filter((it) => isFresh(it.publishedAt, 7))
+        if (r.length) {
+          results = r
+          break
+        }
       } catch (e) {
         console.warn("source failed:", src, e?.message)
       }
     }
+
     if (results.length) {
-      results.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
-      allApplications = results
+      allApplications = sortByPublishedDesc(results)
       dataReady = true
       lastUpdated = new Date()
       updatedAtEl.textContent = `Aktualisiert: ${formatDate(lastUpdated)}`
+    } else {
+      console.warn("Keine frischen Live-Ergebnisse, nutze Fallback-Daten")
+      if (!Array.isArray(allApplications) || !allApplications.length) {
+        if (typeof loadData === "function") loadData()
+      }
     }
   } finally {
     isFetching = false
@@ -270,12 +326,12 @@ async function fetchLiveAggregated(categorySlug) {
 
 function onRouteRoot() {
   activeCategory = ""
-  fetchLiveAggregated("") // Startseite: aktuelle Artikel
+  fetchLiveAggregated("")
 }
 
 function onRouteCategory({ slug }) {
-  activeCategory = slug || ""
-  fetchLiveAggregated(activeCategory) // Rubriksuche: live nach Stichwort
+  activeCategory = (slug || "").trim()
+  fetchLiveAggregated(activeCategory)
 }
 
 reloadBtn.addEventListener("click", loadData)

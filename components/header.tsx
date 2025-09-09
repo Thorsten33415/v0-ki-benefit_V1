@@ -2,9 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Menu, X } from "lucide-react"
-import { Logo } from "@/components/logo"
+import { Logo } from "./logo"
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -65,15 +63,13 @@ export function Header() {
           </nav>
 
           {/* Mobile menu button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="lg:hidden"
+          <button
+            className="lg:hidden px-3 py-2 text-sm font-medium"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-label="Menü öffnen"
           >
-            {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </Button>
+            {isMenuOpen ? "✕" : "☰"}
+          </button>
         </div>
 
         {/* Mobile Navigation */}

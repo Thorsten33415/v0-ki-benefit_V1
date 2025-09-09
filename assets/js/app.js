@@ -9,6 +9,7 @@ const filterSectorEl = document.getElementById("filterSector")
 
 let activeCategory = ""
 let dataReady = false
+let isFetching = false
 
 // Declare variables before using them
 const latestApplications = [] // Placeholder for latest applications data
@@ -73,6 +74,49 @@ async function loadData() {
     updatedAtEl.textContent = `Aktualisiert (Fallback): ${formatDate(lastUpdated)}`
   } finally {
     dataReady = true
+    setLoading(false)
+    render()
+  }
+}
+
+async function fetchLiveData(categorySlug) {
+  if (isFetching) return
+  isFetching = true
+  setLoading(true)
+  try {
+    // Spaceflight News API (kostenlos, keine Auth): https://api.spaceflightnewsapi.net/v4/articles/
+    // Optional: clientseitiger Kategorie-Query als Volltextsuche
+    const search = categorySlug ? `&search=${encodeURIComponent(categorySlug)}` : ""
+    const url = `https://api.spaceflightnewsapi.net/v4/articles/?limit=30&ordering=-published_at${search}`
+    const res = await fetch(url, { headers: { Accept: "application/json" } })
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
+    const data = await res.json()
+    const items = Array.isArray(data?.results) ? data.results : []
+
+    // Mapping auf bestehendes Item-Schema
+    const mapped = items.map((it) => ({
+      title: it.title || "",
+      category: categorySlug || "live",
+      sector: it.news_site || "",
+      description: it.summary || "",
+      link: it.url || "#",
+      iconName: "news",
+      isNew: true,
+      publishedAt: it.published_at,
+    }))
+
+    // Neueste zuerst (falls API nicht korrekt sortiert)
+    mapped.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+
+    allApplications = mapped
+    dataReady = true
+    lastUpdated = new Date()
+    updatedAtEl.textContent = `Aktualisiert: ${formatDate(lastUpdated)}`
+  } catch (e) {
+    console.error(e)
+    // Bei Fehler: lokale Fallback-Daten beibehalten
+  } finally {
+    isFetching = false
     setLoading(false)
     render()
   }
@@ -151,12 +195,12 @@ function getIconSrc(iconName) {
 
 function onRouteRoot() {
   activeCategory = ""
-  render()
+  fetchLiveData("") // Startseite: aktuelle Artikel
 }
 
 function onRouteCategory({ slug }) {
   activeCategory = slug || ""
-  render()
+  fetchLiveData(activeCategory) // Rubriksuche: live nach Stichwort
 }
 
 reloadBtn.addEventListener("click", loadData)
@@ -169,5 +213,4 @@ if (window.AppRouter?.add) {
   window.AppRouter.start()
 }
 
-// Initial Daten laden
-loadData()
+if (typeof loadData === "function") loadData()

@@ -62,16 +62,12 @@ let lastUpdated = null
 async function loadData() {
   setLoading(true)
   try {
-    // Simulierter Delay
-    await new Promise((r) => setTimeout(r, 100))
-
-    const combined = combine(window.latestApplications || [], window.aiApplications || [])
-    allApplications = combined
+    await new Promise((r) => setTimeout(r, 150))
+    allApplications = combine(window.latestApplications || [], window.aiApplications || [])
     lastUpdated = new Date()
     updatedAtEl.textContent = `Aktualisiert: ${formatDate(lastUpdated)}`
-  } catch (err) {
-    console.error("Failed to load dynamic content:", err)
-    // Fallback nur aus statischen Daten
+  } catch (e) {
+    console.error(e)
     allApplications = combine([], window.aiApplications || [])
     lastUpdated = new Date()
     updatedAtEl.textContent = `Aktualisiert (Fallback): ${formatDate(lastUpdated)}`
@@ -87,8 +83,8 @@ function render() {
   const empty = document.getElementById("emptyState")
   if (!ul) return
 
-  // Vorzeitiger Exit, aber UI leeren, damit Unterseiten korrekt wirken
   ul.innerHTML = ""
+
   if (!dataReady) {
     if (empty) empty.classList.add("hidden")
     return
@@ -96,23 +92,26 @@ function render() {
 
   let list = Array.isArray(allApplications) ? allApplications.slice() : []
 
-  // Route-Kategorie
+  // 1.) Route-Kategorie strikt anwenden
   if (activeCategory) {
     const cat = activeCategory.toLowerCase()
     list = list.filter((it) => String(it.category || "").toLowerCase() === cat)
   }
 
-  // Bestehende UI-Filter respektieren
-  const q = (filterCategoryEl?.value || "").trim().toLowerCase()
-  if (q)
+  // 2.) UI-Filter NACH der Route anwenden (nicht überschreiben)
+  const catText = (filterCategoryEl?.value || "").trim().toLowerCase()
+  if (catText) {
     list = list.filter((it) =>
       String(it.category || "")
         .toLowerCase()
-        .includes(q),
+        .includes(catText),
     )
+  }
 
-  const sec = (filterSectorEl?.value || "").trim()
-  if (sec) list = list.filter((it) => String(it.sector || "") === sec)
+  const sectorVal = (filterSectorEl?.value || "").trim()
+  if (sectorVal) {
+    list = list.filter((it) => String(it.sector || "") === sectorVal)
+  }
 
   if (!list.length) {
     if (empty) empty.classList.remove("hidden")
@@ -120,7 +119,6 @@ function render() {
   }
   if (empty) empty.classList.add("hidden")
 
-  // Cards aufbauen
   const frag = document.createDocumentFragment()
   for (const app of list) {
     const li = document.createElement("li")
@@ -151,25 +149,23 @@ function getIconSrc(iconName) {
   return `icons/${iconName}.png`
 }
 
-function handleRouteRoot() {
+function onRouteRoot() {
   activeCategory = ""
   render()
 }
 
-function handleRouteCategory({ slug }) {
+function onRouteCategory({ slug }) {
   activeCategory = slug || ""
   render()
 }
 
-// Event Listeners
 reloadBtn.addEventListener("click", loadData)
-if (filterCategoryEl) filterCategoryEl.addEventListener("input", render)
-if (filterSectorEl) filterSectorEl.addEventListener("change", render)
+filterCategoryEl?.addEventListener("input", render)
+filterSectorEl?.addEventListener("change", render)
 
-// Router registrieren und starten
 if (window.AppRouter?.add) {
-  window.AppRouter.add("/", handleRouteRoot)
-  window.AppRouter.add("/category/:slug", handleRouteCategory)
+  window.AppRouter.add("/", onRouteRoot)
+  window.AppRouter.add("/category/:slug", onRouteCategory)
   window.AppRouter.start()
 }
 

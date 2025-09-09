@@ -8,6 +8,7 @@ const filterCategoryEl = document.getElementById("filterCategory")
 const filterSectorEl = document.getElementById("filterSector")
 
 let activeCategory = ""
+let dataReady = false
 
 // Declare variables before using them
 const latestApplications = [] // Placeholder for latest applications data
@@ -58,102 +59,90 @@ let allApplications = null
 /** @type {Date|null} */
 let lastUpdated = null
 
-async function loadDynamicContent() {
+async function loadData() {
   setLoading(true)
   try {
     // Simulierter Delay
-    await new Promise((r) => setTimeout(r, 600))
+    await new Promise((r) => setTimeout(r, 100))
 
-    const combined = combine(latestApplications, aiApplications)
+    const combined = combine(window.latestApplications || [], window.aiApplications || [])
     allApplications = combined
     lastUpdated = new Date()
     updatedAtEl.textContent = `Aktualisiert: ${formatDate(lastUpdated)}`
   } catch (err) {
     console.error("Failed to load dynamic content:", err)
     // Fallback nur aus statischen Daten
-    allApplications = normalizeStatic(aiApplications)
+    allApplications = combine([], window.aiApplications || [])
     lastUpdated = new Date()
     updatedAtEl.textContent = `Aktualisiert (Fallback): ${formatDate(lastUpdated)}`
   } finally {
+    dataReady = true
     setLoading(false)
     render()
   }
 }
 
-function applyFilters(list) {
-  let filtered = list
+function render() {
+  const ul = document.getElementById("appsList")
+  const empty = document.getElementById("emptyState")
+  if (!ul) return
 
-  // Kategorie aus Route anwenden
+  // Vorzeitiger Exit, aber UI leeren, damit Unterseiten korrekt wirken
+  ul.innerHTML = ""
+  if (!dataReady) {
+    if (empty) empty.classList.add("hidden")
+    return
+  }
+
+  let list = Array.isArray(allApplications) ? allApplications.slice() : []
+
+  // Route-Kategorie
   if (activeCategory) {
     const cat = activeCategory.toLowerCase()
-    filtered = filtered.filter((item) => String(item.category || "").toLowerCase() === cat)
+    list = list.filter((it) => String(it.category || "").toLowerCase() === cat)
   }
 
-  // Optionale bestehende UI-Filter
-  const cat = (filterCategoryEl.value || "").trim().toLowerCase()
-  const sec = (filterSectorEl.value || "").trim()
+  // Bestehende UI-Filter respektieren
+  const q = (filterCategoryEl?.value || "").trim().toLowerCase()
+  if (q)
+    list = list.filter((it) =>
+      String(it.category || "")
+        .toLowerCase()
+        .includes(q),
+    )
 
-  return filtered.filter((item) => {
-    const okCat = cat ? item.category.toLowerCase().includes(cat) : true
-    const okSec = sec ? item.sector === sec : true
-    return okCat && okSec
-  })
-}
+  const sec = (filterSectorEl?.value || "").trim()
+  if (sec) list = list.filter((it) => String(it.sector || "") === sec)
 
-function render() {
-  appsListEl.innerHTML = ""
-
-  if (!allApplications || allApplications.length === 0) {
-    emptyStateEl.classList.remove("hidden")
+  if (!list.length) {
+    if (empty) empty.classList.remove("hidden")
     return
   }
-  emptyStateEl.classList.add("hidden")
+  if (empty) empty.classList.add("hidden")
 
-  const filtered = applyFilters(allApplications)
-
-  if (filtered.length === 0) {
-    emptyStateEl.textContent = "Keine Einträge gefunden."
-    emptyStateEl.classList.remove("hidden")
-    return
-  } else {
-    emptyStateEl.textContent = "Keine Einträge gefunden."
-    emptyStateEl.classList.add("hidden")
-  }
-
-  for (const app of filtered) {
-    appsListEl.appendChild(renderCard(app))
-  }
-}
-
-/**
- * @param {DynamicApplication} app
- */
-function renderCard(app) {
-  const li = document.createElement("li")
-  li.className = "card"
-
-  li.innerHTML = `
-    <div class="top">
-      <div class="iconwrap">
-        <img src="${getIconSrc(app.iconName)}" alt="${app.sector}" />
-      </div>
-      <div>
-        <h3 class="title">${app.title}</h3>
-        <div class="meta">
-          <span class="chip">${app.category}</span>
-          <span class="chip">${app.sector}</span>
-          ${app.isNew ? '<span class="chip new">NEU</span>' : ""}
+  // Cards aufbauen
+  const frag = document.createDocumentFragment()
+  for (const app of list) {
+    const li = document.createElement("li")
+    li.className = "card"
+    li.innerHTML = `
+      <div class="top">
+        <div class="iconwrap"><img src="${getIconSrc(app.iconName)}" alt=""></div>
+        <div>
+          <p class="title">${app.title}</p>
+          <div class="meta">
+            <span class="chip">${app.category}</span>
+            <span class="chip small">${app.sector}</span>
+            ${app.isNew ? '<span class="new">Neu</span>' : ""}
+          </div>
         </div>
       </div>
-    </div>
-    <p>${app.description}</p>
-    <div class="small">
-      ${app.date} • vor ${app.daysAgo} Tagen
-    </div>
-    <a href="${app.link}" class="link" target="_blank" rel="noopener">Mehr erfahren</a>
-  `
-
-  return li
+      <p class="small">${app.description || ""}</p>
+      <a class="link" href="${app.link}" target="_blank" rel="noopener">Zur Quelle</a>
+    `
+    frag.appendChild(li)
+  }
+  ul.appendChild(frag)
 }
 
 // Declare getIconSrc function before using it
@@ -162,27 +151,27 @@ function getIconSrc(iconName) {
   return `icons/${iconName}.png`
 }
 
+function handleRouteRoot() {
+  activeCategory = ""
+  render()
+}
+
+function handleRouteCategory({ slug }) {
+  activeCategory = slug || ""
+  render()
+}
+
 // Event Listeners
-reloadBtn.addEventListener("click", loadDynamicContent)
-filterCategoryEl.addEventListener("input", render)
-filterSectorEl.addEventListener("change", render)
+reloadBtn.addEventListener("click", loadData)
+if (filterCategoryEl) filterCategoryEl.addEventListener("input", render)
+if (filterSectorEl) filterSectorEl.addEventListener("change", render)
 
-// Initial Load
-document.addEventListener("DOMContentLoaded", () => {
-  loadDynamicContent()
+// Router registrieren und starten
+if (window.AppRouter?.add) {
+  window.AppRouter.add("/", handleRouteRoot)
+  window.AppRouter.add("/category/:slug", handleRouteCategory)
+  window.AppRouter.start()
+}
 
-  // Routing -> aktive Kategorie setzen und rendern
-  if (window.AppRouter && typeof window.AppRouter.add === "function") {
-    window.AppRouter.add("/", () => {
-      activeCategory = ""
-      render()
-    })
-    window.AppRouter.add("/category/:slug", ({ slug }) => {
-      activeCategory = slug || ""
-      render()
-    })
-    if (typeof window.AppRouter.start === "function") {
-      window.AppRouter.start()
-    }
-  }
-})
+// Initial Daten laden
+loadData()

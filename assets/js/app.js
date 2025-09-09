@@ -72,10 +72,7 @@ let allApplications = null
 /** @type {Date|null} */
 let lastUpdated = null
 
-const GNEWS_API_KEY = "<DEIN_GNEWS_KEY>"
-const NEWSAPI_KEY = "<DEIN_NEWSAPI_KEY>"
-
-const LIVE_SOURCES = ["gnews", "newsapi", "spaceflight", "hackernews", "reddit"]
+const LIVE_SOURCES = ["spaceflight", "hackernews", "reddit"]
 
 async function loadData() {
   setLoading(true)
@@ -94,60 +91,6 @@ async function loadData() {
     setLoading(false)
     render()
   }
-}
-
-async function fetchFromGNews(q) {
-  if (!GNEWS_API_KEY) throw new Error("Missing GNEWS_API_KEY")
-  const params = new URLSearchParams({
-    q: q || "news",
-    lang: "de",
-    max: "30",
-    sortby: "publishedAt",
-    token: GNEWS_API_KEY,
-  })
-  const url = `https://gnews.io/api/v4/search?${params.toString()}`
-  const res = await fetch(url, NO_CACHE)
-  if (!res.ok) throw new Error("gnews " + res.status)
-  const data = await res.json()
-  const items = Array.isArray(data?.articles) ? data.articles : []
-  const mapped = items.map((it) => ({
-    title: it.title || "",
-    category: q || "gnews",
-    sector: it.source?.name || "GNews",
-    description: it.description || "",
-    link: it.url || "#",
-    iconName: "news",
-    isNew: true,
-    publishedAt: it.publishedAt,
-  }))
-  return sortByPublishedDesc(mapped)
-}
-
-async function fetchFromNewsAPI(q) {
-  if (!NEWSAPI_KEY) throw new Error("Missing NEWSAPI_KEY")
-  const params = new URLSearchParams({
-    q: q || "news",
-    language: "de",
-    pageSize: "30",
-    sortBy: "publishedAt",
-    apiKey: NEWSAPI_KEY,
-  })
-  const url = `https://newsapi.org/v2/everything?${params.toString()}`
-  const res = await fetch(url, NO_CACHE)
-  if (!res.ok) throw new Error("newsapi " + res.status)
-  const data = await res.json()
-  const items = Array.isArray(data?.articles) ? data.articles : []
-  const mapped = items.map((it) => ({
-    title: it.title || "",
-    category: q || "newsapi",
-    sector: it.source?.name || "NewsAPI",
-    description: it.description || "",
-    link: it.url || "#",
-    iconName: "news",
-    isNew: true,
-    publishedAt: it.publishedAt,
-  }))
-  return sortByPublishedDesc(mapped)
 }
 
 async function fetchFromSpaceflight(q) {
@@ -290,9 +233,7 @@ async function fetchLiveAggregated(categorySlug) {
     for (const src of LIVE_SOURCES) {
       try {
         let r = []
-        if (src === "gnews") r = await fetchFromGNews(categorySlug)
-        else if (src === "newsapi") r = await fetchFromNewsAPI(categorySlug)
-        else if (src === "spaceflight") r = await fetchFromSpaceflight(categorySlug)
+        if (src === "spaceflight") r = await fetchFromSpaceflight(categorySlug)
         else if (src === "hackernews") r = await fetchFromHackerNews(categorySlug)
         else if (src === "reddit") r = await fetchFromReddit(categorySlug)
 

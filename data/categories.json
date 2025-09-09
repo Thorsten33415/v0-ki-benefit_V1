@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "ai-strategie",
+    "title": "AI-Strategie",
+    "description": "So entwickelst du eine tragfähige KI-Strategie."
+  },
+  {
+    "slug": "automatisierung",
+    "title": "Automatisierung",
+    "description": "Prozesse mit KI effizient automatisieren."
+  },
+  {
+    "slug": "datenqualitaet",
+    "title": "Datenqualität",
+    "description": "Saubere Daten als Basis für KI-Erfolg."
+  },
+  {
+    "slug": "ki-entwicklungen",
+    "title": "KI-Entwicklungen",
+    "description": "Neueste Entwicklungen in der Künstlichen Intelligenz."
+  },
+  {
+    "slug": "ki-anwendungen",
+    "title": "KI-Anwendungen",
+    "description": "Praktische Anwendungen von KI in verschiedenen Bereichen."
+  },
+  {
+    "slug": "chancen-risiken",
+    "title": "Chancen & Risiken",
+    "description": "Chancen und Risiken beim Einsatz von KI-Technologien."
+  }
+]

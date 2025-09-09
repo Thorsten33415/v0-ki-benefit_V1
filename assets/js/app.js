@@ -60,6 +60,11 @@ let allApplications = null
 /** @type {Date|null} */
 let lastUpdated = null
 
+const GNEWS_API_KEY = "<DEIN_GNEWS_KEY>"
+const NEWSAPI_KEY = "<DEIN_NEWSAPI_KEY>"
+
+const LIVE_SOURCES = ["gnews", "newsapi", "spaceflight", "hackernews", "reddit"]
+
 async function loadData() {
   setLoading(true)
   try {
@@ -79,47 +84,85 @@ async function loadData() {
   }
 }
 
-async function fetchLiveData(categorySlug) {
-  if (isFetching) return
-  isFetching = true
-  setLoading(true)
-  try {
-    // Spaceflight News API (kostenlos, keine Auth): https://api.spaceflightnewsapi.net/v4/articles/
-    // Optional: clientseitiger Kategorie-Query als Volltextsuche
-    const search = categorySlug ? `&search=${encodeURIComponent(categorySlug)}` : ""
-    const url = `https://api.spaceflightnewsapi.net/v4/articles/?limit=30&ordering=-published_at${search}`
-    const res = await fetch(url, { headers: { Accept: "application/json" } })
-    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
-    const data = await res.json()
-    const items = Array.isArray(data?.results) ? data.results : []
+async function fetchFromGNews(q) {
+  if (!GNEWS_API_KEY) throw new Error("Missing GNEWS_API_KEY")
+  const params = new URLSearchParams({
+    q: q || "news",
+    lang: "de",
+    max: "30",
+    sortby: "publishedAt",
+    token: GNEWS_API_KEY,
+  })
+  const url = `https://gnews.io/api/v4/search?${params.toString()}`
+  const res = await fetch(url, { headers: { Accept: "application/json" } })
+  if (!res.ok) throw new Error("gnews " + res.status)
+  const data = await res.json()
+  const items = Array.isArray(data?.articles) ? data.articles : []
+  return items.map((it) => ({
+    title: it.title || "",
+    category: q || "gnews",
+    sector: it.source?.name || "GNews",
+    description: it.description || "",
+    link: it.url || "#",
+    iconName: "news",
+    isNew: true,
+    publishedAt: it.publishedAt,
+  }))
+}
 
-    // Mapping auf bestehendes Item-Schema
-    const mapped = items.map((it) => ({
-      title: it.title || "",
-      category: categorySlug || "live",
-      sector: it.news_site || "",
-      description: it.summary || "",
-      link: it.url || "#",
-      iconName: "news",
-      isNew: true,
-      publishedAt: it.published_at,
-    }))
+async function fetchFromNewsAPI(q) {
+  if (!NEWSAPI_KEY) throw new Error("Missing NEWSAPI_KEY")
+  const params = new URLSearchParams({
+    q: q || "news",
+    language: "de",
+    pageSize: "30",
+    sortBy: "publishedAt",
+    apiKey: NEWSAPI_KEY,
+  })
+  const url = `https://newsapi.org/v2/everything?${params.toString()}`
+  const res = await fetch(url, { headers: { Accept: "application/json" } })
+  if (!res.ok) throw new Error("newsapi " + res.status)
+  const data = await res.json()
+  const items = Array.isArray(data?.articles) ? data.articles : []
+  return items.map((it) => ({
+    title: it.title || "",
+    category: q || "newsapi",
+    sector: it.source?.name || "NewsAPI",
+    description: it.description || "",
+    link: it.url || "#",
+    iconName: "news",
+    isNew: true,
+    publishedAt: it.publishedAt,
+  }))
+}
 
-    // Neueste zuerst (falls API nicht korrekt sortiert)
-    mapped.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+async function fetchFromSpaceflight(categorySlug) {
+  const search = categorySlug ? `&search=${encodeURIComponent(categorySlug)}` : ""
+  const url = `https://api.spaceflightnewsapi.net/v4/articles/?limit=30&ordering=-published_at${search}`
+  const res = await fetch(url, { headers: { Accept: "application/json" } })
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
+  const data = await res.json()
+  const items = Array.isArray(data?.results) ? data.results : []
+  return items.map((it) => ({
+    title: it.title || "",
+    category: categorySlug || "spaceflight",
+    sector: it.news_site || "",
+    description: it.summary || "",
+    link: it.url || "#",
+    iconName: "news",
+    isNew: true,
+    publishedAt: it.published_at,
+  }))
+}
 
-    allApplications = mapped
-    dataReady = true
-    lastUpdated = new Date()
-    updatedAtEl.textContent = `Aktualisiert: ${formatDate(lastUpdated)}`
-  } catch (e) {
-    console.error(e)
-    // Bei Fehler: lokale Fallback-Daten beibehalten
-  } finally {
-    isFetching = false
-    setLoading(false)
-    render()
-  }
+async function fetchFromHackerNews(categorySlug) {
+  // Placeholder implementation
+  return []
+}
+
+async function fetchFromReddit(categorySlug) {
+  // Placeholder implementation
+  return []
 }
 
 function render() {
@@ -193,14 +236,46 @@ function getIconSrc(iconName) {
   return `icons/${iconName}.png`
 }
 
+async function fetchLiveAggregated(categorySlug) {
+  if (isFetching) return
+  isFetching = true
+  setLoading(true)
+  try {
+    let results = []
+    for (const src of LIVE_SOURCES) {
+      try {
+        if (src === "gnews") results = await fetchFromGNews(categorySlug)
+        else if (src === "newsapi") results = await fetchFromNewsAPI(categorySlug)
+        else if (src === "spaceflight") results = await fetchFromSpaceflight(categorySlug)
+        else if (src === "hackernews") results = await fetchFromHackerNews(categorySlug)
+        else if (src === "reddit") results = await fetchFromReddit(categorySlug)
+        if (results.length) break
+      } catch (e) {
+        console.warn("source failed:", src, e?.message)
+      }
+    }
+    if (results.length) {
+      results.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+      allApplications = results
+      dataReady = true
+      lastUpdated = new Date()
+      updatedAtEl.textContent = `Aktualisiert: ${formatDate(lastUpdated)}`
+    }
+  } finally {
+    isFetching = false
+    setLoading(false)
+    render()
+  }
+}
+
 function onRouteRoot() {
   activeCategory = ""
-  fetchLiveData("") // Startseite: aktuelle Artikel
+  fetchLiveAggregated("") // Startseite: aktuelle Artikel
 }
 
 function onRouteCategory({ slug }) {
   activeCategory = slug || ""
-  fetchLiveData(activeCategory) // Rubriksuche: live nach Stichwort
+  fetchLiveAggregated(activeCategory) // Rubriksuche: live nach Stichwort
 }
 
 reloadBtn.addEventListener("click", loadData)

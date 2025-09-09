@@ -58,8 +58,11 @@ async function fetchGoogleNewsRss(query: string): Promise<Article[]> {
   })
 }
 
+import { slugToQuery } from "@/lib/slug"
+
 export default async function Page({ params }: { params: { slug: string } }) {
-  const query = String(params.slug).replace(/-/g, " ")
+  const query = slugToQuery(params.slug)
+
   let articles: Article[] = []
   let error: string | null = null
 

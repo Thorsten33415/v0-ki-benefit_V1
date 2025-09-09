@@ -1,0 +1,24 @@
+[
+  {
+    "id": "1",
+    "title": "Coole App",
+    "description": "Kurz erklärt",
+    "date": "2025-09-01",
+    "category": "tools",
+    "sector": "industrial",
+    "link": "https://example.com",
+    "daysAgo": 2,
+    "iconName": "industrial"
+  },
+  {
+    "id": "2",
+    "title": "Haushaltshelfer",
+    "description": "Für den Alltag",
+    "date": "2025-08-20",
+    "category": "home",
+    "sector": "private",
+    "link": "https://example.org",
+    "daysAgo": 10,
+    "iconName": "private"
+  }
+]
